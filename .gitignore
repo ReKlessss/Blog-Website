@@ -1,4 +1,4 @@
-posts.db
+instance/
 .venv/
 .idea/
 __pycache__/
