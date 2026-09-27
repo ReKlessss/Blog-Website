@@ -2,3 +2,4 @@ posts.db
 .venv/
 .idea/
 __pycache__/
+.env
