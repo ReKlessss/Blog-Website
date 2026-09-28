@@ -1,7 +1,8 @@
 from datetime import date
-from flask import Flask, abort, render_template, redirect, url_for, flash
+from flask import Flask, abort, render_template, redirect, url_for, flash, request
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
+from flask_ckeditor.utils import cleanify
 from flask_login import UserMixin, login_user, LoginManager, current_user, logout_user, login_required
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
@@ -11,6 +12,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm, ContactForm
 from hashlib import md5
 from dotenv import load_dotenv
+import smtplib
+from html import unescape
+from email.message import EmailMessage
 import os
 
 load_dotenv()
@@ -228,9 +232,38 @@ def about():
 @app.route("/contact", methods=["GET", "POST"])
 def contact():
     form = ContactForm()
+
+    if request.method == "GET" and current_user.is_authenticated:
+        form.email.data = current_user.email
+
     if form.validate_on_submit():
-        flash(f"Message sent! Thank you for reaching out to us, {form.name.data}!")
-        return redirect(url_for("contact"))
+        if not current_user.is_authenticated:
+            possible_user = db.session.scalar(db.select(User).where(User.email == form.email.data))
+            if possible_user:
+                flash(f"Cannot send messages for a user that already exists unless logged in. Please login first!")
+                return redirect(url_for("login"))`
+
+        clean_body = cleanify(unescape(form.body.data))
+
+        msg = EmailMessage()
+        msg["Subject"] = f"{form.name.data} is asking about your Blog Website!!!"
+        msg["From"] = os.getenv("SENDER")
+        msg["To"] = os.getenv("RECEIVER")
+        msg.set_content(clean_body)
+        msg.add_alternative(clean_body, subtype="html")
+
+        try:
+            with smtplib.SMTP(os.getenv("SMTP_SERVER"), int(os.getenv("SMTP_PORT"))) as smtp:
+                smtp.ehlo()
+                smtp.starttls()
+                smtp.login(os.getenv("SENDER"), os.getenv("APP_PASSWORD"))
+                smtp.send_message(msg)
+
+            flash("Message sent successfully!")
+        except Exception as e:
+            flash(f"Error sending message, try again later! (if you're curious, here's the error ({e}))")
+
+        return redirect(url_for('contact'))
 
     return render_template("contact.html", form=form)
 
