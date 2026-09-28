@@ -241,7 +241,7 @@ def contact():
             possible_user = db.session.scalar(db.select(User).where(User.email == form.email.data))
             if possible_user:
                 flash(f"Cannot send messages for a user that already exists unless logged in. Please login first!")
-                return redirect(url_for("login"))`
+                return redirect(url_for("login"))
 
         clean_body = cleanify(unescape(form.body.data))
 
