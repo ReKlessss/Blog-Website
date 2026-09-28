@@ -178,10 +178,12 @@ def show_post(post_id):
 def add_new_post():
     form = CreatePostForm()
     if form.validate_on_submit():
+        clean_text = cleanify(unescape(form.body.data))
+
         new_post = BlogPost(
             title=form.title.data,
             subtitle=form.subtitle.data,
-            body=form.body.data,
+            body=clean_text,
             img_url=form.img_url.data,
             author=current_user,
             date=date.today().strftime("%B %d, %Y")
