@@ -237,8 +237,12 @@ def contact():
         form.email.data = current_user.email
 
     if form.validate_on_submit():
-        if not current_user.is_authenticated:
-            possible_user = db.session.scalar(db.select(User).where(User.email == form.email.data))
+        possible_user = db.session.scalar(db.select(User).where(User.email == form.email.data))
+        if current_user.is_authenticated:
+            if possible_user.id != current_user.id:
+                flash(f"Cannot send messages for a user that already exists unless logged in. Please login first!")
+                return redirect(url_for("login"))
+        else:
             if possible_user:
                 flash(f"Cannot send messages for a user that already exists unless logged in. Please login first!")
                 return redirect(url_for("login"))
