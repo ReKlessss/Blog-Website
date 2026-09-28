@@ -8,7 +8,7 @@ from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import Integer, String, Text, ForeignKey
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
-from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm
+from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm, ContactForm
 from hashlib import md5
 from dotenv import load_dotenv
 import os
@@ -225,10 +225,15 @@ def about():
     return render_template("about.html")
 
 
-@app.route("/contact")
+@app.route("/contact", methods=["GET", "POST"])
 def contact():
-    return render_template("contact.html")
+    form = ContactForm()
+    if form.validate_on_submit():
+        flash(f"Message sent! Thank you for reaching out to us, {form.name.data}!")
+        return redirect(url_for("contact"))
+
+    return render_template("contact.html", form=form)
 
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run(debug=True)
