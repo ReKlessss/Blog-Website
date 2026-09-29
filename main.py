@@ -269,7 +269,6 @@ def contact():
 		except ResendError as e:
 			flash(f"Error sending message: {e}")
 
-
 		return redirect(url_for('contact'))
 
 	return render_template("contact.html", form=form)
