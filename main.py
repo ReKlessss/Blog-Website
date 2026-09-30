@@ -1,6 +1,7 @@
 from os import getenv
 from html import unescape
 from functools import wraps
+from datetime import datetime
 
 from flask import Flask, abort, render_template, redirect, url_for, flash, request
 from flask_login import login_user, current_user, logout_user, login_required
@@ -47,6 +48,18 @@ def load_user(user_id):
 	return user
 
 
+@app.context_processor
+def inject_year():
+	return {"current_year": datetime.now().year}
+
+
+@app.route('/logout')
+@login_required
+def logout():
+	logout_user()
+	return redirect(url_for('get_all_posts'))
+
+
 @app.route('/register', methods=["GET", "POST"])
 def register():
 	form = RegisterForm()
@@ -90,13 +103,6 @@ def login():
 		return redirect(url_for("get_all_posts"))
 
 	return render_template("login.html", form=form)
-
-
-@app.route('/logout')
-@login_required
-def logout():
-	logout_user()
-	return redirect(url_for('get_all_posts'))
 
 
 @app.route('/')
