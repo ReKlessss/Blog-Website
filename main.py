@@ -30,7 +30,10 @@ Bootstrap5(app)
 login_manager.init_app(app)
 db.init_app(app)
 
+with app.app_context():
+	db.create_all()
 
+# utils
 def admin_only(func):
 	@wraps(func)
 	def wrapper(*args, **kwargs):
@@ -59,7 +62,7 @@ def logout():
 	logout_user()
 	return redirect(url_for('get_all_posts'))
 
-
+# mian functions
 @app.route('/register', methods=["GET", "POST"])
 def register():
 	form = RegisterForm()
@@ -214,7 +217,4 @@ def contact():
 
 
 if __name__ == "__main__":
-	with app.app_context():
-		db.create_all()
-
 	app.run(debug=False)
