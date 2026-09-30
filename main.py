@@ -1,80 +1,33 @@
-from csv import excel
-from datetime import date
+from os import getenv
+from html import unescape
+from functools import wraps
+
 from flask import Flask, abort, render_template, redirect, url_for, flash, request
+from flask_login import login_user, current_user, logout_user, login_required
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_ckeditor.utils import cleanify
+from resend.exceptions import ResendError
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
-from flask_ckeditor.utils import cleanify
-from flask_login import UserMixin, login_user, LoginManager, current_user, logout_user, login_required
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Integer, String, Text, ForeignKey
-from functools import wraps
-from werkzeug.security import generate_password_hash, check_password_hash
-from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm, ContactForm
-from hashlib import md5
 from dotenv import load_dotenv
-from resend.exceptions import ResendError
 import resend
-from html import unescape
-import os
 
+from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm, ContactForm
+from models import BlogPost, User, Comment
+from database import db, login_manager
+
+
+# initialization
 load_dotenv()
-resend.api_key = os.getenv("RESEND_API_KEY")
+resend.api_key = getenv("RESEND_API_KEY")
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", default="very-secret-key")
+app.config['SECRET_KEY'] = getenv("SECRET_KEY", default="very-secret-key")
+app.config['SQLALCHEMY_DATABASE_URI'] = getenv("DB_URI")
+
 ckeditor = CKEditor(app)
 Bootstrap5(app)
-
-login_manager = LoginManager()
 login_manager.init_app(app)
-
-
-# CREATE DATABASE
-class Base(DeclarativeBase):
-	pass
-
-
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DB_URI")
-db = SQLAlchemy(model_class=Base)
 db.init_app(app)
-
-
-# CONFIGURE TABLES
-class BlogPost(db.Model):
-	__tablename__ = "blog_posts"
-	id: Mapped[int] = mapped_column(Integer, primary_key=True)
-	author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-	title: Mapped[str] = mapped_column(String(250), unique=True, nullable=False)
-	subtitle: Mapped[str] = mapped_column(String(250), nullable=False)
-	date: Mapped[str] = mapped_column(String(250), nullable=False)
-	body: Mapped[str] = mapped_column(Text, nullable=False)
-	author: Mapped["User"] = relationship(back_populates="posts")
-	img_url: Mapped[str] = mapped_column(String(250), nullable=False)
-	comments: Mapped[list["Comment"]] = relationship(back_populates="blog")
-
-
-class Comment(db.Model):
-	__tablename__ = "comments"
-	id: Mapped[int] = mapped_column(primary_key=True)
-	author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-	author: Mapped["User"] = relationship(back_populates="comments")
-	blog_id: Mapped[int] = mapped_column(ForeignKey("blog_posts.id"))
-	blog: Mapped["BlogPost"] = relationship(back_populates="comments")
-	text: Mapped[str] = mapped_column(String(250))
-
-
-class User(db.Model, UserMixin):
-	__tablename__ = "users"
-	id: Mapped[int] = mapped_column(primary_key=True)
-	username: Mapped[str] = mapped_column(unique=True)
-	email: Mapped[str] = mapped_column(unique=True)
-	password: Mapped[str] = mapped_column(String(250))
-	posts: Mapped[list["BlogPost"]] = relationship(back_populates="author")
-	comments: Mapped[list["Comment"]] = relationship(back_populates="author")
-
-	def avatar(self):
-		digest = md5(self.email.lower().encode("utf-8")).hexdigest()
-		return f"https://www.gravatar.com/avatar/{digest}?d=identicon"
 
 
 def admin_only(func):
@@ -94,10 +47,6 @@ def load_user(user_id):
 	return user
 
 
-with app.app_context():
-	db.create_all()
-
-
 @app.route('/register', methods=["GET", "POST"])
 def register():
 	form = RegisterForm()
@@ -111,7 +60,7 @@ def register():
 		new_user = User(
 			username=form.username.data,
 			email=form.email.data,
-			password=generate_password_hash(form.password.data, method="pbkdf2:sha256", salt_length=12)
+			password=generate_password_hash(form.password.data)
 		)
 
 		db.session.add(new_user)
@@ -190,8 +139,7 @@ def add_new_post():
 			subtitle=form.subtitle.data,
 			body=clean_text,
 			img_url=form.img_url.data,
-			author=current_user,
-			date=date.today().strftime("%B %d, %Y")
+			author=current_user
 		)
 		db.session.add(new_post)
 		db.session.commit()
@@ -204,20 +152,11 @@ def add_new_post():
 @admin_only
 def edit_post(post_id):
 	post = db.get_or_404(BlogPost, post_id)
-	edit_form = CreatePostForm(
-		title=post.title,
-		subtitle=post.subtitle,
-		img_url=post.img_url,
-		author=post.author,
-		body=post.body
-	)
+	edit_form = CreatePostForm(obj=post)
 	if edit_form.validate_on_submit():
-		post.title = edit_form.title.data
-		post.subtitle = edit_form.subtitle.data
-		post.img_url = edit_form.img_url.data
-		post.author = current_user
-		post.body = edit_form.body.data
+		edit_form.populate_obj(post)
 		db.session.commit()
+
 		return redirect(url_for("show_post", post_id=post.id))
 	return render_template("make-post.html", form=edit_form, is_edit=True)
 
@@ -245,20 +184,14 @@ def contact():
 
 	if form.validate_on_submit():
 		possible_user = db.session.scalar(db.select(User).where(User.email == form.email.data))
-		if current_user.is_authenticated:
-			if possible_user.id != current_user.id:
-				flash(f"Cannot send messages for a user that already exists unless logged in. Please login first!")
-				return redirect(url_for("login"))
-		else:
-			if possible_user:
-				flash(f"Cannot send messages for a user that already exists unless logged in. Please login first!")
-				return redirect(url_for("login"))
-
+		if possible_user and (not current_user.is_authenticated or current_user.id != possible_user.id):
+			flash(f"User with email {form.email.data} already exists. Please login instead!")
+			return redirect(url_for("login") if current_user.is_authenticated else url_for("register"))
 
 		clean_body = cleanify(unescape(form.body.data))
 		params: resend.Emails.SendParams = {
 			"from": "Blog <onboarding@resend.dev>",
-			"to": [os.getenv("RECEIVER")],
+			"to": [getenv("RECEIVER")],
 			"subject": f"Message from {form.name.data} ({form.email.data}) on your Blog website",
 			"html": clean_body
 		}
@@ -275,4 +208,7 @@ def contact():
 
 
 if __name__ == "__main__":
-	app.run(debug=True)
+	with app.app_context():
+		db.create_all()
+
+	app.run(debug=False)

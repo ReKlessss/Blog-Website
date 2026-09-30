@@ -11,7 +11,7 @@
                     <span class="meta"
                     >Posted by
             <a href="#">{{ post.author.username }}</a>
-            on {{ post.date }}
+            on {{ post.date.strftime('%B %d, %Y') }}
           </span>
                 </div>
             </div>
@@ -24,7 +24,7 @@
     <div class="container px-4 px-lg-5">
         <div class="row gx-4 gx-lg-5 justify-content-center">
             <div class="col-md-10 col-lg-8 col-xl-7">
-                {{ post.body|safe }}
+                {{ post.body | safe }}
                 {% if current_user.get_id() == "1" %}
                     <div class="d-flex justify-content-end mb-4">
                         <a
@@ -35,23 +35,19 @@
                     </div>
                 {% endif %}
 
-                <!-- Comments Area -->
-                <!-- TODO: Add a CKEditor for commenting below -->
-                {{ ckeditor.load() }} {{ ckeditor.config(name='comment') }} {{
-                    render_form(form, novalidate=True, button_map={'submit': 'primary'})
-                    }}
+                <!-- Comments  -->
+                {{ ckeditor.load() }} {{ ckeditor.config(name='comment') }} {{ render_form(form, novalidate=True, button_map={'submit': 'primary'}) }}
                 <div class="comment">
-                    <!-- TODO: Show all the comments on a post -->
                     <ul class="commentList">
                         <li>
                             {% for comment in post.comments %}
-                             <div class="commenterImage">
-                                <img src="{{ comment.author.avatar() }}"/>
-                            </div>
-                            <div class="commentText">
-                                {{ comment.text|safe }}
-                                <span class="date sub-text">{{ comment.author.username }}</span>
-                            </div>
+                                <div class="commenterImage">
+                                    <img alt="{{ comment.author.username }}'s avatar" src="{{ comment.author.avatar() }}"/>
+                                </div>
+                                <div class="commentText">
+                                    <span class="date sub-text">By {{ comment.author.username }} on {{ post.date.strftime('%B %d, %Y') }}</span>
+                                    {{ comment.text|safe }}
+                                </div>
                             {% endfor %}
                         </li>
                     </ul>
